@@ -17,6 +17,7 @@ limitations under the License.
 package remotecommand
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,6 +49,9 @@ type Executor interface {
 	// is set, the stderr stream is not used (raw TTY manages stdout and stderr over the
 	// stdout stream).
 	Stream(options StreamOptions) error
+
+	// StreamWithContext is the same as Stream but with a context.
+	StreamWithContext(ctx context.Context, options StreamOptions) error
 }
 
 type streamCreator interface {
@@ -106,7 +110,13 @@ func NewSPDYExecutorForProtocols(transport http.RoundTripper, upgrader spdy.Upgr
 // Stream opens a protocol streamer to the server and streams until a client closes
 // the connection or the server disconnects.
 func (e *streamExecutor) Stream(options StreamOptions) error {
-	req, err := http.NewRequest(e.method, e.url.String(), nil)
+	return e.StreamWithContext(context.Background(), options)
+}
+
+// StreamWithContext opens a protocol streamer to the server and streams until a client closes
+// the connection or the server disconnects or the context is done.
+func (e *streamExecutor) StreamWithContext(ctx context.Context, options StreamOptions) error {
+	req, err := http.NewRequestWithContext(ctx, e.method, e.url.String(), nil)
 	if err != nil {
 		return fmt.Errorf("error creating request: %v", err)
 	}
@@ -138,5 +148,16 @@ func (e *streamExecutor) Stream(options StreamOptions) error {
 		streamer = newStreamProtocolV1(options)
 	}
 
-	return streamer.stream(conn)
+	errorChan := make(chan error)
+	go func() {
+		defer close(errorChan)
+		errorChan <- streamer.stream(conn)
+	}()
+
+	select {
+	case err := <-errorChan:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

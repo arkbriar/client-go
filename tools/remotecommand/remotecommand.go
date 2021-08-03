@@ -130,7 +130,9 @@ func (e *streamExecutor) StreamWithContext(ctx context.Context, options StreamOp
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		go conn.Close()
+	}()
 
 	var streamer streamProtocolHandler
 

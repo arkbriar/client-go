@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -121,18 +122,25 @@ func (e *streamExecutor) StreamWithContext(ctx context.Context, options StreamOp
 		return fmt.Errorf("error creating request: %v", err)
 	}
 
+	deadline, _ := ctx.Deadline()
+	timeout := deadline.Sub(time.Now())
+	if timeout < 0 {
+		return context.DeadlineExceeded
+	}
+
 	conn, protocol, err := spdy.Negotiate(
 		e.upgrader,
-		&http.Client{Transport: e.transport},
+		&http.Client{
+			Transport: e.transport,
+			Timeout:   timeout,
+		},
 		req,
 		e.protocols...,
 	)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		go conn.Close()
-	}()
+	defer conn.Close()
 
 	var streamer streamProtocolHandler
 

@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/util/httpstream"
@@ -160,6 +161,7 @@ func (e *streamExecutor) StreamWithContext(ctx context.Context, options StreamOp
 
 	errorChan := make(chan error, 1)
 	go func() {
+		defer runtime.HandleCrash()
 		defer close(errorChan)
 		errorChan <- streamer.stream(conn)
 	}()
